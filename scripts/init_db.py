@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from core.db.init_db import init_db
@@ -55,7 +55,7 @@ def main():
     print(f"   ✓ ChromaDB directory: {chroma_dir}")
     
     print("\n=== Setup Complete ===")
-    print("\nYou can now run the system with: python main.py")
+    print("\nYou can now run the system with: python app.py")
 
 
 if __name__ == "__main__":

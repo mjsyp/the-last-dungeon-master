@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     deepgram_api_key: Optional[str] = None
     
     # ChromaDB
-    chroma_persist_dir: str = "./chroma_db"
+    chroma_persist_dir: str = "./data/chroma"
     
     # Application
     log_level: str = "INFO"

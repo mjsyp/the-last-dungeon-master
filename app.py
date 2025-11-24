@@ -1,5 +1,5 @@
 """FastAPI web application for DM-VA."""
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Favicon endpoint (must be before static files mount to avoid conflicts)
+@app.get("/favicon.ico")
+async def favicon():
+    """Serve favicon."""
+    favicon_path = Path(__file__).parent / "web" / "favicon.ico"
+    if favicon_path.exists():
+        return Response(content=favicon_path.read_bytes(), media_type="image/x-icon")
+    # Return a simple SVG favicon as fallback
+    svg_favicon = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="32" height="32">
+  <text y=".9em" font-size="90" text-anchor="middle" x="50">🎲</text>
+</svg>"""
+    return Response(content=svg_favicon.encode(), media_type="image/svg+xml")
+
+# Mount static files
+# Note: StaticFiles must be mounted before other routes that might conflict
+# IMPORTANT: Use absolute path to avoid issues when server runs from different directory
+web_static_path = Path(__file__).parent.resolve() / "web" / "static"
+if web_static_path.exists() and web_static_path.is_dir():
+    try:
+        static_dir = str(web_static_path)
+        app.mount("/static", StaticFiles(directory=static_dir, html=False), name="static")
+        print(f"✓ Static files mounted from: {static_dir}")
+    except Exception as e:
+        print(f"✗ Warning: Could not mount static files: {e}")
+        import traceback
+        traceback.print_exc()
+else:
+    print(f"✗ Warning: Static files directory not found at {web_static_path}")
 
 # Note: In production, consider using dependency injection with proper session management
 # For now, we create per-request instances which is safer for multi-user scenarios
@@ -89,6 +118,10 @@ class WorldEditInput(BaseModel):
     player_id: str
 
 
+class MainMenuInput(BaseModel):
+    input: str
+
+
 # API Endpoints
 
 @app.get("/", response_class=HTMLResponse)
@@ -96,8 +129,8 @@ async def root():
     """Serve the main web interface."""
     html_path = Path(__file__).parent / "web" / "index.html"
     if html_path.exists():
-        return html_path.read_text()
-    return """
+        return HTMLResponse(content=html_path.read_text(), media_type="text/html")
+    return HTMLResponse(content="""
     <html>
         <head><title>DM-VA</title></head>
         <body>
@@ -106,7 +139,7 @@ async def root():
             <p>Web interface coming soon.</p>
         </body>
     </html>
-    """
+    """, media_type="text/html")
 
 
 @app.get("/api/health")
@@ -201,6 +234,21 @@ async def world_edit_propose(
     result = orchestrator.process_input({
         "proposed_change": input_data.proposed_change,
         "player_id": input_data.player_id
+    })
+    return result
+
+
+@app.post("/api/main-menu/input")
+async def main_menu_input(
+    input_data: MainMenuInput,
+    orchestrator: Orchestrator = Depends(get_orchestrator)
+):
+    """Process input in Main Menu Mode."""
+    if orchestrator.state.current_mode != Mode.MAIN_MENU:
+        orchestrator.switch_mode(Mode.MAIN_MENU)
+    
+    result = orchestrator.process_input({
+        "input": input_data.input
     })
     return result
 
@@ -333,21 +381,16 @@ async def set_active_party(
 
 @app.post("/api/stt/transcribe")
 async def transcribe_audio(
-    request: Request
+    audio: UploadFile = File(...)
 ):
     """Transcribe audio using STT."""
-    from fastapi import UploadFile, File
     from audio.stt import get_stt_provider
     
-    # Get audio file from form data
-    form = await request.form()
-    audio_file = form.get("audio")
-    
-    if not audio_file:
-        raise HTTPException(status_code=400, detail="No audio file provided")
-    
     # Read audio data
-    audio_data = await audio_file.read()
+    audio_data = await audio.read()
+    
+    if not audio_data:
+        raise HTTPException(status_code=400, detail="No audio data provided")
     
     # Transcribe using Deepgram
     stt = get_stt_provider("deepgram")
@@ -396,5 +439,19 @@ async def list_characters(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("=" * 60)
+    print("The Last Dungeon Master (DM-VA) - Web Server")
+    print("=" * 60)
+    print("\nStarting server...")
+    print("Access the web interface at: http://localhost:8000")
+    print("API documentation at: http://localhost:8000/docs")
+    print("\nPress Ctrl+C to stop the server\n")
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=True,  # Auto-reload on code changes
+        log_level="info"
+    )
 

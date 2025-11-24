@@ -3,7 +3,7 @@ from core.db.session import engine, Base
 from models import (
     Universe, Campaign, Location, Character, Faction, Event, Session,
     PlayerGroup, GroupMember, PlayerState, RuleSystem, RulesTopic,
-    TutorialScript, WorldChangeRequest
+    TutorialScript, WorldChangeRequest, UserSession
 )
 
 

@@ -42,7 +42,10 @@ ENV/
 *.sqlite
 *.sqlite3
 
-# ChromaDB
+# Data directory
+data/
+
+# Old ChromaDB location (consolidated to data/chroma)
 chroma_db/
 
 # Logs
