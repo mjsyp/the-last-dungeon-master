@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Anthropic (optional)
     anthropic_api_key: Optional[str] = None
     
+    # Deepgram (STT/TTS)
+    deepgram_api_key: Optional[str] = None
+    
     # ChromaDB
     chroma_persist_dir: str = "./chroma_db"
     

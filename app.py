@@ -1,7 +1,7 @@
 """FastAPI web application for DM-VA."""
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
@@ -327,6 +327,61 @@ async def set_active_party(
     """Set the active party."""
     orchestrator.set_active_party(party_id)
     return {"status": "success", "party_id": party_id}
+
+
+# Audio endpoints
+
+@app.post("/api/stt/transcribe")
+async def transcribe_audio(
+    request: Request
+):
+    """Transcribe audio using STT."""
+    from fastapi import UploadFile, File
+    from audio.stt import get_stt_provider
+    
+    # Get audio file from form data
+    form = await request.form()
+    audio_file = form.get("audio")
+    
+    if not audio_file:
+        raise HTTPException(status_code=400, detail="No audio file provided")
+    
+    # Read audio data
+    audio_data = await audio_file.read()
+    
+    # Transcribe using Deepgram
+    stt = get_stt_provider("deepgram")
+    transcript = stt.transcribe(audio_data)
+    
+    return {"transcript": transcript}
+
+
+@app.post("/api/tts/synthesize")
+async def synthesize_speech(
+    request: Request
+):
+    """Synthesize text to speech using TTS."""
+    from audio.tts import get_tts_provider
+    from fastapi.responses import Response
+    import json
+    
+    # Get JSON body
+    body = await request.json()
+    text = body.get("text", "")
+    voice = body.get("voice")
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided")
+    
+    # Synthesize using Deepgram
+    tts = get_tts_provider("deepgram")
+    audio_bytes = tts.synthesize(text, voice=voice, encoding="linear16", container="wav")
+    
+    # Return audio as response
+    return Response(
+        content=audio_bytes,
+        media_type="audio/wav"
+    )
 
 
 @app.get("/api/characters")

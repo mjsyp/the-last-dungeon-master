@@ -131,6 +131,24 @@
             align-items: flex-end;
         }
         
+        .listen-indicator {
+            display: none;
+            padding: 8px 12px;
+            background: rgba(255, 0, 0, 0.3);
+            border-radius: 20px;
+            font-size: 0.9em;
+            animation: pulse-red 1.5s infinite;
+        }
+        
+        .listen-indicator.active {
+            display: block;
+        }
+        
+        @keyframes pulse-red {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+        
         .chat-input-wrapper {
             flex: 1;
             display: flex;
@@ -232,6 +250,7 @@
             padding: 20px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.3s ease;
+            margin-bottom: 0;
         }
         
         .panel.collapsible {
@@ -257,6 +276,45 @@
             gap: 10px;
             cursor: pointer;
             user-select: none;
+        }
+        
+        .chat-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            font-size: 0.7em;
+        }
+        
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            transition: all 0.2s;
+            user-select: none;
+        }
+        
+        .checkbox-label:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .checkbox-label input[type="checkbox"] {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+        
+        .checkbox-label input[type="checkbox"]:checked + span {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .checkbox-label.active {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4CAF50;
         }
         
         .panel.collapsed h2 {
@@ -289,6 +347,7 @@
         
         .status-panel {
             grid-column: 1 / -1;
+            margin-bottom: 20px;
         }
         
         .status-item {
@@ -541,7 +600,7 @@
             <div class="panel-content" id="status-content">
                 <div class="status-item">
                     <span class="status-label">Mode:</span>
-                    <span class="status-value" id="current-mode">Loading...</span>
+                    <span class="status-value" id="current-mode">main_menu_mode</span>
                 </div>
                 <div class="status-item">
                     <span class="status-label">Universe:</span>
@@ -576,7 +635,19 @@
             </div>
             
             <div class="panel">
-                <h2>Chat</h2>
+                <h2>
+                    <span>Chat</span>
+                    <div class="chat-controls">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="listen-checkbox">
+                            <span>🎤 Listen</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="speak-checkbox" checked>
+                            <span>🔊 Speak</span>
+                        </label>
+                    </div>
+                </h2>
                 <div class="chat-container">
                     <div class="chat-history" id="chat-history">
                         <div class="chat-message system">
@@ -593,6 +664,7 @@
                     </div>
                     <div class="chat-input-area">
                         <div class="chat-input-wrapper">
+                            <div class="listen-indicator" id="listen-indicator">🎤 Listening...</div>
                             <textarea 
                                 id="chat-input" 
                                 class="chat-input" 
@@ -629,6 +701,10 @@
         const API_BASE = '';
         let currentMode = null;
         let chatHistory = [];
+        let isListening = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let audioContext = null;
         
         const MODE_INFO = {
             'main_menu_mode': {
@@ -679,12 +755,21 @@
         async function loadState() {
             try {
                 const response = await fetch(`${API_BASE}/api/state`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const state = await response.json();
                 currentMode = state.current_mode;
                 updateUI(state);
                 loadEntities();
             } catch (error) {
                 console.error('Error loading state:', error);
+                // Set default values if state fails to load
+                document.getElementById('current-mode').textContent = 'main_menu_mode';
+                document.getElementById('universe-id').textContent = 'None';
+                document.getElementById('campaign-id').textContent = 'None';
+                document.getElementById('party-id').textContent = 'None';
+                document.getElementById('turn-index').textContent = '0';
                 showError('Failed to load session state');
             }
         }
@@ -822,20 +907,23 @@
             scrollChatToBottom();
         }
         
-        // Handle chat submission
+        // Handle chat submission (text input)
         async function handleChatSubmit() {
             const input = document.getElementById('chat-input').value.trim();
             if (!input) return;
             
-            const sendBtn = document.getElementById('chat-send-btn');
-            const inputEl = document.getElementById('chat-input');
-            
             // Add user message to chat
             addChatMessage(input, 'user', { label: 'You' });
             
-            // Clear input and disable
-            inputEl.value = '';
-            inputEl.style.height = 'auto';
+            // Process the input
+            await processUserInput(input);
+        }
+        
+        // Process user input (from text or STT)
+        async function processUserInput(inputText) {
+            const sendBtn = document.getElementById('chat-send-btn');
+            const inputEl = document.getElementById('chat-input');
+            
             sendBtn.disabled = true;
             showTypingIndicator(true);
             
@@ -847,23 +935,23 @@
                 switch (currentMode) {
                     case 'dm_story_mode':
                         endpoint = '/api/dm-story/input';
-                        body = { player_utterance: input };
+                        body = { player_utterance: inputText };
                         break;
                     case 'world_architect_mode':
                         endpoint = '/api/world-architect/generate';
-                        body = { requirements: input };
+                        body = { requirements: inputText };
                         break;
                     case 'rules_explanation_mode':
                         endpoint = '/api/rules/explain';
-                        body = { question: input };
+                        body = { question: inputText };
                         break;
                     case 'world_edit_mode':
                         endpoint = '/api/world-edit/propose';
-                        body = { proposed_change: input, player_id: 'user1' };
+                        body = { proposed_change: inputText, player_id: 'user1' };
                         break;
                     default:
                         endpoint = '/api/dm-story/input';
-                        body = { player_utterance: input };
+                        body = { player_utterance: inputText };
                 }
                 
                 const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -889,9 +977,16 @@
                     responseText = JSON.stringify(result, null, 2);
                 }
                 
-                // Add system response
+                // Add system response to chat
                 const modeLabel = MODE_INFO[currentMode]?.name || 'System';
                 addChatMessage(responseText, 'system', { label: modeLabel });
+                
+                // Play TTS if Speak is enabled
+                if (speakCheckbox.checked && responseText) {
+                    // Show TTS indicator in chat
+                    addChatMessage('🔊 Speaking...', 'system', { label: 'TTS' });
+                    await playTTS(responseText);
+                }
                 
                 // Show additional info if present
                 if (result.log_updates) {
@@ -904,8 +999,8 @@
                     addChatMessage(editText, 'system', { label: 'System' });
                 }
                 
-                await loadState(); // Refresh state
-                await loadEntities(); // Refresh entities
+                await loadState();
+                await loadEntities();
                 
             } catch (error) {
                 console.error('Error processing input:', error);
@@ -913,7 +1008,161 @@
                 addChatMessage(`Error: ${error.message}`, 'system', { label: 'Error' });
             } finally {
                 sendBtn.disabled = false;
+                inputEl.value = '';
+                inputEl.style.height = 'auto';
                 inputEl.focus();
+            }
+        }
+        
+        // Start listening with microphone
+        async function startListening() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Create MediaRecorder
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await processAudioInput(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                // Start recording
+                mediaRecorder.start();
+                isListening = true;
+                listenIndicator.classList.add('active');
+                updateCheckboxLabels();
+                
+                // Auto-stop after 5 seconds of silence or manual stop
+                setTimeout(() => {
+                    if (isListening && mediaRecorder.state === 'recording') {
+                        stopListening();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                showError('Failed to access microphone. Please check permissions.');
+                listenCheckbox.checked = false;
+                updateCheckboxLabels();
+            }
+        }
+        
+        // Stop listening
+        function stopListening() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            isListening = false;
+            listenIndicator.classList.remove('active');
+            updateCheckboxLabels();
+        }
+        
+        // Process audio input through STT
+        async function processAudioInput(audioBlob) {
+            try {
+                // Show processing message
+                addChatMessage('Processing audio...', 'system', { label: 'System' });
+                
+                // Convert to format Deepgram can use
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'audio.webm');
+                
+                // Send to STT endpoint
+                const response = await fetch(`${API_BASE}/api/stt/transcribe`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.transcript) {
+                    // Add transcript to chat
+                    addChatMessage(result.transcript, 'user', { label: 'You (Voice)' });
+                    
+                    // Process as if it was typed
+                    await processUserInput(result.transcript);
+                } else {
+                    addChatMessage('Could not transcribe audio. Please try again.', 'system', { label: 'Error' });
+                }
+                
+            } catch (error) {
+                console.error('Error processing audio:', error);
+                addChatMessage(`Error processing audio: ${error.message}`, 'system', { label: 'Error' });
+            }
+        }
+        
+        // Play TTS audio
+        async function playTTS(text) {
+            try {
+                // Request TTS from server
+                const response = await fetch(`${API_BASE}/api/tts/synthesize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // Play audio
+                const audio = new Audio(audioUrl);
+                await audio.play();
+                
+                // Clean up
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                };
+                
+            } catch (error) {
+                console.error('Error playing TTS:', error);
+                // Don't show error to user, just log it
+            }
+        }
+        
+        // Listen/Speak checkbox handlers
+        const listenCheckbox = document.getElementById('listen-checkbox');
+        const speakCheckbox = document.getElementById('speak-checkbox');
+        const listenIndicator = document.getElementById('listen-indicator');
+        
+        listenCheckbox.addEventListener('change', async (e) => {
+            if (e.target.checked) {
+                await startListening();
+            } else {
+                stopListening();
+            }
+        });
+        
+        speakCheckbox.addEventListener('change', (e) => {
+            // Just update the state, TTS will be used when processing responses
+            updateCheckboxLabels();
+        });
+        
+        function updateCheckboxLabels() {
+            const listenLabel = listenCheckbox.closest('.checkbox-label');
+            const speakLabel = speakCheckbox.closest('.checkbox-label');
+            
+            if (listenCheckbox.checked) {
+                listenLabel.classList.add('active');
+            } else {
+                listenLabel.classList.remove('active');
+            }
+            
+            if (speakCheckbox.checked) {
+                speakLabel.classList.add('active');
+            } else {
+                speakLabel.classList.remove('active');
             }
         }
         
@@ -946,7 +1195,12 @@
         
         // Initialize
         initModeSelector();
-        loadState();
+        // Load state immediately and set up intervals
+        loadState().catch(err => {
+            console.error('Initial state load failed:', err);
+            // Set defaults
+            document.getElementById('current-mode').textContent = 'main_menu_mode';
+        });
         setInterval(loadState, 5000); // Refresh state every 5 seconds
         setInterval(loadEntities, 10000); // Refresh entities every 10 seconds
         
@@ -972,11 +1226,49 @@
             });
         }
         
+        // Listen/Speak checkbox handlers (must be defined before initialization)
+        const listenCheckbox = document.getElementById('listen-checkbox');
+        const speakCheckbox = document.getElementById('speak-checkbox');
+        const listenIndicator = document.getElementById('listen-indicator');
+        
+        listenCheckbox.addEventListener('change', async (e) => {
+            if (e.target.checked) {
+                await startListening();
+            } else {
+                stopListening();
+            }
+        });
+        
+        speakCheckbox.addEventListener('change', (e) => {
+            // Just update the state, TTS will be used when processing responses
+            updateCheckboxLabels();
+        });
+        
+        function updateCheckboxLabels() {
+            const listenLabel = listenCheckbox.closest('.checkbox-label');
+            const speakLabel = speakCheckbox.closest('.checkbox-label');
+            
+            if (listenCheckbox.checked) {
+                listenLabel.classList.add('active');
+            } else {
+                listenLabel.classList.remove('active');
+            }
+            
+            if (speakCheckbox.checked) {
+                speakLabel.classList.add('active');
+            } else {
+                speakLabel.classList.remove('active');
+            }
+        }
+        
         // Focus chat input on load
         document.getElementById('chat-input').focus();
         
         // Restore panel states
         restorePanelStates();
+        
+        // Initialize checkbox labels
+        updateCheckboxLabels();
     </script>
 </body>
 </html>

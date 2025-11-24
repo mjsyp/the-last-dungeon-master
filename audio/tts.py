@@ -84,18 +84,75 @@ class MultiVoiceTTS:
         return self.base_provider.synthesize(text, voice=voice, **kwargs)
 
 
-def get_tts_provider(provider: str = "openai", multi_voice: bool = False) -> TTSProvider:
+class DeepgramTTS(TTSProvider):
+    """Deepgram TTS implementation."""
+    
+    def __init__(self):
+        try:
+            from deepgram import DeepgramClient
+            self.DeepgramClient = DeepgramClient
+        except ImportError:
+            raise ImportError("deepgram-sdk is required. Install with: pip install deepgram-sdk")
+        
+        if not settings.deepgram_api_key:
+            raise ValueError("DEEPGRAM_API_KEY must be set")
+        
+        # DeepgramClient v5 uses access_token parameter or env var
+        import os
+        os.environ['DEEPGRAM_API_KEY'] = settings.deepgram_api_key
+        self.client = DeepgramClient(access_token=settings.deepgram_api_key)
+        self.default_voice = "aura-asteria-en"  # Default Deepgram voice
+    
+    def synthesize(self, text: str, voice: Optional[str] = None, **kwargs) -> bytes:
+        """
+        Synthesize text using Deepgram TTS API.
+        
+        Args:
+            text: Text to synthesize
+            voice: Optional voice identifier (e.g., "aura-asteria-en", "aura-luna-en", "aura-stella-en")
+            **kwargs: Additional parameters (encoding, container, etc.)
+        
+        Returns:
+            Audio data as bytes
+        """
+        voice = voice or self.default_voice
+        encoding = kwargs.get("encoding", "linear16")  # linear16, mp3, mulaw, alaw
+        container = kwargs.get("container", "none")  # none, mp3, wav
+        
+        # Configure options for Deepgram SDK v5
+        options = {
+            "model": voice,
+            "encoding": encoding,
+            "container": container,
+        }
+        
+        # Synthesize using Deepgram SDK v5 API
+        response = self.client.speak.v("1").save(
+            {"text": text},
+            options
+        )
+        
+        # Return audio bytes
+        return response
+
+
+def get_tts_provider(provider: str = "deepgram", multi_voice: bool = False) -> TTSProvider:
     """
     Factory function to get a TTS provider.
     
     Args:
-        provider: "openai" or other future providers
+        provider: "deepgram" or "openai"
         multi_voice: Whether to wrap in MultiVoiceTTS
     
     Returns:
         TTSProvider instance
     """
-    if provider == "openai":
+    if provider == "deepgram":
+        base = DeepgramTTS()
+        if multi_voice:
+            return MultiVoiceTTS(base)
+        return base
+    elif provider == "openai":
         base = OpenAITTS()
         if multi_voice:
             return MultiVoiceTTS(base)
