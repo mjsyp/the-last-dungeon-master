@@ -329,6 +329,16 @@ async def set_active_party(
     return {"status": "success", "party_id": party_id}
 
 
+@app.get("/api/characters")
+async def list_characters(
+    universe_id: Optional[str] = None,
+    campaign_id: Optional[str] = None,
+    menu_manager: MainMenuManager = Depends(get_menu_manager)
+):
+    """List characters, optionally filtered by universe or campaign."""
+    return menu_manager.list_characters(universe_id=universe_id, campaign_id=campaign_id)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

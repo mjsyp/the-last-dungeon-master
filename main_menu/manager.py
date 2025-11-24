@@ -1,6 +1,5 @@
 """Main menu and campaign management operations."""
 from typing import List, Dict, Any, Optional
-from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from models import (
@@ -34,7 +33,7 @@ class MainMenuManager:
     
     def get_universe(self, universe_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific universe by ID."""
-        universe = self.db.query(Universe).filter(Universe.id == UUID(universe_id)).first()
+        universe = self.db.query(Universe).filter(Universe.id == universe_id).first()
         if not universe:
             return None
         
@@ -75,7 +74,7 @@ class MainMenuManager:
     
     def delete_universe(self, universe_id: str) -> bool:
         """Delete a universe (with safety checks)."""
-        universe = self.db.query(Universe).filter(Universe.id == UUID(universe_id)).first()
+        universe = self.db.query(Universe).filter(Universe.id == universe_id).first()
         if not universe:
             return False
         
@@ -97,7 +96,7 @@ class MainMenuManager:
         """List campaigns, optionally filtered by universe."""
         query = self.db.query(Campaign)
         if universe_id:
-            query = query.filter(Campaign.universe_id == UUID(universe_id))
+            query = query.filter(Campaign.universe_id == universe_id)
         
         campaigns = query.order_by(desc(Campaign.created_at)).all()
         return [
@@ -116,7 +115,7 @@ class MainMenuManager:
     
     def get_campaign(self, campaign_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific campaign by ID."""
-        campaign = self.db.query(Campaign).filter(Campaign.id == UUID(campaign_id)).first()
+        campaign = self.db.query(Campaign).filter(Campaign.id == campaign_id).first()
         if not campaign:
             return None
         
@@ -143,7 +142,7 @@ class MainMenuManager:
     ) -> Dict[str, Any]:
         """Create a new campaign."""
         campaign = Campaign(
-            universe_id=UUID(universe_id) if universe_id else None,
+            universe_id=universe_id if universe_id else None,
             name=name,
             genre=genre,
             tone=tone,
@@ -172,7 +171,7 @@ class MainMenuManager:
         """List parties, optionally filtered by universe."""
         query = self.db.query(PlayerGroup)
         if universe_id:
-            query = query.filter(PlayerGroup.universe_id == UUID(universe_id))
+            query = query.filter(PlayerGroup.universe_id == universe_id)
         
         parties = query.order_by(desc(PlayerGroup.created_at)).all()
         return [
@@ -196,7 +195,7 @@ class MainMenuManager:
     ) -> Dict[str, Any]:
         """Create a new party."""
         party = PlayerGroup(
-            universe_id=UUID(universe_id),
+            universe_id=universe_id,
             name=name,
             description=description
         )
@@ -210,6 +209,36 @@ class MainMenuManager:
             "universe_id": str(party.universe_id),
             "description": party.description
         }
+    
+    # Character Management
+    
+    def list_characters(
+        self,
+        universe_id: Optional[str] = None,
+        campaign_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """List characters, optionally filtered by universe or campaign."""
+        query = self.db.query(Character)
+        if universe_id:
+            query = query.filter(Character.universe_id == universe_id)
+        if campaign_id:
+            query = query.filter(Character.campaign_id == campaign_id)
+        
+        characters = query.order_by(Character.name).all()
+        return [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "universe_id": str(c.universe_id),
+                "campaign_id": str(c.campaign_id) if c.campaign_id else None,
+                "role": c.role,
+                "race": c.race,
+                "class_name": c.class_name,
+                "alignment": c.alignment,
+                "summary": c.summary,
+            }
+            for c in characters
+        ]
     
     # Utility: Import generated world
     
@@ -230,7 +259,7 @@ class MainMenuManager:
         if "universe" in world_data:
             uni_data = world_data["universe"]
             if universe_id:
-                universe = self.db.query(Universe).filter(Universe.id == UUID(universe_id)).first()
+                universe = self.db.query(Universe).filter(Universe.id == universe_id).first()
                 if universe:
                     universe.name = uni_data.get("name", universe.name)
                     universe.description = uni_data.get("description", universe.description)
@@ -255,7 +284,7 @@ class MainMenuManager:
         if "campaign" in world_data and "universe_id" in created:
             camp_data = world_data["campaign"]
             campaign = Campaign(
-                universe_id=UUID(created["universe_id"]),
+                universe_id=created["universe_id"],
                 name=camp_data.get("name", "New Campaign"),
                 genre=camp_data.get("genre"),
                 tone=camp_data.get("tone"),

@@ -1,6 +1,5 @@
 """Universe model."""
-from sqlalchemy import Column, String, Text, ARRAY, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from models.base import BaseModel
 
@@ -11,8 +10,8 @@ class Universe(BaseModel):
     
     name = Column(String(255), nullable=False, unique=True)
     description = Column(Text, nullable=True)
-    themes = Column(ARRAY(String), nullable=True)  # e.g., ["gods vs mortals", "deep time"]
-    default_rule_system_id = Column(UUID(as_uuid=True), ForeignKey("rule_systems.id"), nullable=True)
+    themes = Column(JSON, nullable=True)  # e.g., ["gods vs mortals", "deep time"] - JSON for SQLite compatibility
+    default_rule_system_id = Column(String(36), ForeignKey("rule_systems.id"), nullable=True)  # UUID as string for SQLite
     
     # Relationships
     campaigns = relationship("Campaign", back_populates="universe", cascade="all, delete-orphan")

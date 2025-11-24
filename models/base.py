@@ -1,6 +1,5 @@
 """Base model with common fields."""
-from sqlalchemy import Column, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, String, func
 import uuid
 from core.db.session import Base
 
@@ -15,5 +14,6 @@ class BaseModel(Base, TimestampMixin):
     """Base model with UUID primary key and timestamps."""
     __abstract__ = True
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+    # Use String for UUID to support both PostgreSQL and SQLite
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()), nullable=False)
 

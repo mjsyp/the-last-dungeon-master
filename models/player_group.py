@@ -1,6 +1,6 @@
 """Player group/party model."""
-from sqlalchemy import Column, String, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime
+from sqlalchemy import JSON
 from sqlalchemy.orm import relationship
 from models.base import BaseModel
 
@@ -9,10 +9,10 @@ class PlayerGroup(BaseModel):
     """A player group/party."""
     __tablename__ = "player_groups"
     
-    universe_id = Column(UUID(as_uuid=True), ForeignKey("universes.id"), nullable=False)
+    universe_id = Column(String(36), ForeignKey("universes.id"), nullable=False)
     name = Column(String(255), nullable=False)  # e.g., "The Ember Company"
     description = Column(Text, nullable=True)
-    campaign_ids = Column(JSONB, nullable=True)  # Array of campaign IDs this group has participated in
+    campaign_ids = Column(JSON, nullable=True)  # Array of campaign IDs this group has participated in
     
     # Relationships
     universe = relationship("Universe", back_populates="parties")
@@ -26,9 +26,9 @@ class GroupMember(BaseModel):
     """Association between a player group and its members."""
     __tablename__ = "group_members"
     
-    party_id = Column(UUID(as_uuid=True), ForeignKey("player_groups.id"), nullable=False)
+    party_id = Column(String(36), ForeignKey("player_groups.id"), nullable=False)
     player_id = Column(String(255), nullable=False)  # Real-world player identifier
-    character_id = Column(UUID(as_uuid=True), ForeignKey("characters.id"), nullable=True)
+    character_id = Column(String(36), ForeignKey("characters.id"), nullable=True)
     joined_at = Column(DateTime(timezone=True), nullable=True)
     left_at = Column(DateTime(timezone=True), nullable=True)
     

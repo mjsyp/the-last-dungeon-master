@@ -13,6 +13,7 @@ from models.player_state import PlayerState
 from models.rules_topic import RulesTopic
 from models.tutorial_script import TutorialScript
 from models.world_change_request import WorldChangeRequest
+from models.user_session import UserSession
 
 __all__ = [
     "BaseModel",
@@ -31,4 +32,5 @@ __all__ = [
     "RulesTopic",
     "TutorialScript",
     "WorldChangeRequest",
+    "UserSession",
 ]
