@@ -68,10 +68,20 @@ The system is organized into four main layers:
    python -m core.db.init_db
    ```
 
-5. **Start the system:**
+5. **Start the web server:**
+   ```bash
+   python run_server.py
+   ```
+   
+   Or for CLI mode:
    ```bash
    python main.py
    ```
+
+6. **Access the application:**
+   - Web interface: http://localhost:8000
+   - API documentation: http://localhost:8000/docs
+   - Interactive API: http://localhost:8000/redoc
 
 ## Quick Start
 

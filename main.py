@@ -24,6 +24,7 @@ def main():
         print("  - 'mode <mode_name>': Switch mode")
         print("  - 'quit': Exit")
         print("\nModes: main_menu, world_architect, dm_story, rules_explanation, tutorial, world_edit")
+        print("\nNote: For web interface, run: python run_server.py")
         
         # Simple CLI loop (for testing)
         while True:
